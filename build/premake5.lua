@@ -162,105 +162,63 @@ function check_box2d()
     os.chdir("../")
 end
 
-function check_libpng()
-    os.chdir("external")
-    
-    -- Get the cached versions (will fetch only once)
-    local versions = get_latest_versions()
-    local libpng_version = versions.libpng
-    local libpng_folder = "libpng-" .. libpng_version
-    local libpng_archive = libpng_folder .. ".zip"
-    
-    if(os.isdir("libpng") == false) then
-        if(not os.isfile(libpng_archive)) then
-            print("libpng v" .. libpng_version .. " not found, downloading from official source")
-            local download_url = "https://github.com/pnggroup/libpng/archive/refs/tags/v" .. libpng_version .. ".zip"
-            local result_str, response_code = http.download(download_url, libpng_archive, {
-                progress = download_progress,
-                headers = { "From: Premake", "Referer: Premake" }
-            })
-        end
-        print("Extracting libpng to " .. os.getcwd())
-        zip.extract(libpng_archive, os.getcwd())
-        
-        -- Rename the extracted folder to simple name
-        if os.isdir(libpng_folder) then
-            os.rename(libpng_folder, "libpng")
-            print("Renamed " .. libpng_folder .. " to libpng")
-        end
-        
-        os.remove(libpng_archive)
-    else
-        print("libpng already exists")
-    end
-    
-    -- Generate pnglibconf.h from the prebuilt version
-    if os.isdir("libpng") and not os.isfile("libpng/pnglibconf.h") then
-        print("Generating pnglibconf.h for libpng")
-        os.copyfile("libpng/scripts/pnglibconf.h.prebuilt", "libpng/pnglibconf.h")
-    end
-    
-    os.chdir("../")
-end
-
 function check_libjpeg_turbo()
     os.chdir("external")
     
-    -- Get the cached versions (will fetch only once)
-    local versions = get_latest_versions()
-    local libjpeg_version = versions.libjpeg_turbo
-    local libjpeg_folder = "libjpeg-turbo-" .. libjpeg_version
-    local libjpeg_archive = libjpeg_folder .. ".zip"
+    -- Use fixed version for prebuilt binaries
+    local libjpeg_version = "3.1.2"
+    local libjpeg_exe = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64.exe"
     
     if(os.isdir("libjpeg-turbo") == false) then
-        if(not os.isfile(libjpeg_archive)) then
-            print("libjpeg-turbo v" .. libjpeg_version .. " not found, downloading from github")
-            local download_url = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/" .. libjpeg_version .. ".zip"
-            local result_str, response_code = http.download(download_url, libjpeg_archive, {
+        if(not os.isfile(libjpeg_exe)) then
+            print("libjpeg-turbo v" .. libjpeg_version .. " not found, downloading prebuilt binaries from GitHub")
+            local download_url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/" .. libjpeg_version .. "/libjpeg-turbo-" .. libjpeg_version .. "-vc-x64.exe"
+            local result_str, response_code = http.download(download_url, libjpeg_exe, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
-        print("Extracting libjpeg-turbo to " .. os.getcwd())
-        zip.extract(libjpeg_archive, os.getcwd())
         
-        -- Rename the extracted folder to simple name
-        if os.isdir(libjpeg_folder) then
-            os.rename(libjpeg_folder, "libjpeg-turbo")
-            print("Renamed " .. libjpeg_folder .. " to libjpeg-turbo")
+        print("Extracting libjpeg-turbo using 7zip...")
+        -- Create temp directory for extraction
+        os.mkdir("libjpeg-turbo-temp")
+        
+        -- Extract the .exe using 7zip (NSIS installer)
+        local extract_cmd = "7z x \"" .. libjpeg_exe .. "\" -o\"libjpeg-turbo-temp\" -y"
+        local result = os.execute(extract_cmd)
+        
+        if result == 0 then
+            -- Create final directory structure
+            os.mkdir("libjpeg-turbo")
+            os.mkdir("libjpeg-turbo/include")
+            os.mkdir("libjpeg-turbo/lib")
+            os.mkdir("libjpeg-turbo/bin")
+            
+            -- Copy include files
+            if os.isdir("libjpeg-turbo-temp/include") then
+                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\include libjpeg-turbo\\include")
+            end
+            
+            -- Copy lib files
+            if os.isdir("libjpeg-turbo-temp/lib") then
+                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\lib libjpeg-turbo\\lib")
+            end
+            
+            -- Copy bin files (DLLs)
+            if os.isdir("libjpeg-turbo-temp/bin") then
+                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\bin libjpeg-turbo\\bin")
+            end
+            
+            -- Clean up temp directory
+            os.execute("rmdir /S /Q libjpeg-turbo-temp")
+            os.remove(libjpeg_exe)
+            
+            print("libjpeg-turbo extracted successfully")
+        else
+            print("ERROR: Failed to extract libjpeg-turbo. Make sure 7zip is installed and in PATH.")
         end
-        
-        os.remove(libjpeg_archive)
     else
         print("libjpeg-turbo already exists")
-    end
-    
-    -- Generate jconfig.h for Windows
-    if os.isdir("libjpeg-turbo") and not os.isfile("libjpeg-turbo/jconfig.h") then
-        print("Generating jconfig.h for libjpeg-turbo")
-        local jconfig_content = [[
-/* jconfig.h - Windows configuration for libjpeg-turbo */
-#define JPEG_LIB_VERSION 62
-#define LIBJPEG_TURBO_VERSION 3.0.4
-#define C_ARITH_CODING_SUPPORTED 1
-#define D_ARITH_CODING_SUPPORTED 1
-#define MEM_SRCDST_SUPPORTED 1
-#define BITS_IN_JSAMPLE 8
-#define HAVE_PROTOTYPES 1
-#define HAVE_UNSIGNED_CHAR 1
-#define HAVE_UNSIGNED_SHORT 1
-#define INLINE __inline
-#ifdef _WIN64
-#define SIZEOF_SIZE_T 8
-#else
-#define SIZEOF_SIZE_T 4
-#endif
-]]
-        local file = io.open("libjpeg-turbo/jconfig.h", "wb")
-        if file then
-            file:write(jconfig_content)
-            file:close()
-        end
     end
     
     os.chdir("../")
@@ -338,7 +296,6 @@ end
 function build_externals()
     print("calling externals")
     check_sdl3()
-    check_libpng()
     check_libjpeg_turbo()
     check_pugixml()
     check_sdl3_image()
@@ -372,9 +329,6 @@ sdl3_dir = "external/SDL3"
 
 downloadBox2D = true
 box2d_dir = "external/box2d"
-
-downloadLibPNG = true
-libpng_dir = "external/libpng"
 
 downloadLibJPEGTurbo = true
 libjpeg_turbo_dir = "external/libjpeg-turbo"
@@ -424,7 +378,7 @@ workspace (workspaceName)
 
     targetdir "bin/%{cfg.buildcfg}/"
 
-if (downloadSDL3 or downloadBox2D or downloadLibPNG or downloadLibJPEGTurbo or downloadPugiXML or downloadSDL3Image) then
+if (downloadSDL3 or downloadBox2D or downloadLibJPEGTurbo or downloadPugiXML or downloadSDL3Image) then
     build_externals()
 end
 
@@ -459,8 +413,7 @@ end
         includedirs { "../include" }
         includedirs { sdl3_dir .. "/include" }
         includedirs { box2d_dir .. "/include" }
-        includedirs { libpng_dir }
-        includedirs { libjpeg_turbo_dir }
+        includedirs { libjpeg_turbo_dir .. "/include" }
         includedirs { pugixml_dir .. "/src" }
         includedirs { sdl3_image_dir .. "/include" }
 
@@ -471,8 +424,8 @@ end
         filter "action:vs*"
             defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
             links {"SDL3.lib"}
-            dependson {"box2d", "libpng", "libjpeg-turbo", "pugixml"}
-            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib"}
+            dependson {"box2d", "pugixml"}
+            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib", "jpeg.lib"}
             characterset ("Unicode")
 
         filter "system:windows"
@@ -481,20 +434,22 @@ end
             
             -- SDL3 x64 específic
             filter { "system:windows", "platforms:x64" }
-                libdirs { sdl3_dir .. "/lib/x64", sdl3_image_dir .. "/lib/x64" }
+                libdirs { sdl3_dir .. "/lib/x64", sdl3_image_dir .. "/lib/x64", libjpeg_turbo_dir .. "/lib" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x64/
                     "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x64\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
-                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x64\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x64\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
+                    "{COPY} \"$(SolutionDir)build\\external\\libjpeg-turbo\\bin\\jpeg62.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
                 }
                 
             -- SDL3 x86 específic
             filter { "system:windows", "platforms:x86" }
-                libdirs { sdl3_dir .. "/lib/x86", sdl3_image_dir .. "/lib/x86" }
+                libdirs { sdl3_dir .. "/lib/x86", sdl3_image_dir .. "/lib/x86", libjpeg_turbo_dir .. "/lib" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x86/
                     "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x86\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
-                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x86\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x86\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
+                    "{COPY} \"$(SolutionDir)build\\external\\libjpeg-turbo\\bin\\jpeg62.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
                 }
 
         filter "system:linux"
@@ -535,111 +490,6 @@ end
             ["Source Files/*"] = { box2d_dir .. "/src/**.c"},
         }
         files {box2d_dir .. "/include/**.h", box2d_dir .. "/src/**.c", box2d_dir .. "/src/**.h"}
-        
-        filter{}
-
-    project "libpng"
-        kind "StaticLib"
-        
-        location "build_files/"
-        
-        language "C"
-        targetdir "../bin/%{cfg.buildcfg}"
-        
-        filter "action:vs*"
-            defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
-            characterset ("Unicode")
-        filter{}
-        
-        includedirs { libpng_dir }
-        defines { "PNG_STATIC" }
-        
-        files { 
-            libpng_dir .. "/png.c",
-            libpng_dir .. "/pngerror.c",
-            libpng_dir .. "/pngget.c",
-            libpng_dir .. "/pngmem.c",
-            libpng_dir .. "/pngpread.c",
-            libpng_dir .. "/pngread.c",
-            libpng_dir .. "/pngrio.c",
-            libpng_dir .. "/pngrtran.c",
-            libpng_dir .. "/pngrutil.c",
-            libpng_dir .. "/pngset.c",
-            libpng_dir .. "/pngtrans.c",
-            libpng_dir .. "/pngwio.c",
-            libpng_dir .. "/pngwrite.c",
-            libpng_dir .. "/pngwtran.c",
-            libpng_dir .. "/pngwutil.c",
-            libpng_dir .. "/png.h",
-            libpng_dir .. "/pngconf.h"
-        }
-        
-        filter{}
-
-    project "libjpeg-turbo"
-        kind "StaticLib"
-        
-        location "build_files/"
-        
-        language "C"
-        targetdir "../bin/%{cfg.buildcfg}"
-        
-        filter "action:vs*"
-            defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
-            characterset ("Unicode")
-        filter{}
-        
-        includedirs { libjpeg_turbo_dir }
-        
-        files { 
-            libjpeg_turbo_dir .. "/jaricom.c",
-            libjpeg_turbo_dir .. "/jcapimin.c",
-            libjpeg_turbo_dir .. "/jcapistd.c",
-            libjpeg_turbo_dir .. "/jcarith.c",
-            libjpeg_turbo_dir .. "/jccoefct.c",
-            libjpeg_turbo_dir .. "/jccolor.c",
-            libjpeg_turbo_dir .. "/jcdctmgr.c",
-            libjpeg_turbo_dir .. "/jchuff.c",
-            libjpeg_turbo_dir .. "/jcinit.c",
-            libjpeg_turbo_dir .. "/jcmainct.c",
-            libjpeg_turbo_dir .. "/jcmarker.c",
-            libjpeg_turbo_dir .. "/jcmaster.c",
-            libjpeg_turbo_dir .. "/jcomapi.c",
-            libjpeg_turbo_dir .. "/jcparam.c",
-            libjpeg_turbo_dir .. "/jcprepct.c",
-            libjpeg_turbo_dir .. "/jcsample.c",
-            libjpeg_turbo_dir .. "/jctrans.c",
-            libjpeg_turbo_dir .. "/jdapimin.c",
-            libjpeg_turbo_dir .. "/jdapistd.c",
-            libjpeg_turbo_dir .. "/jdarith.c",
-            libjpeg_turbo_dir .. "/jdatadst.c",
-            libjpeg_turbo_dir .. "/jdatasrc.c",
-            libjpeg_turbo_dir .. "/jdcoefct.c",
-            libjpeg_turbo_dir .. "/jdcolor.c",
-            libjpeg_turbo_dir .. "/jddctmgr.c",
-            libjpeg_turbo_dir .. "/jdhuff.c",
-            libjpeg_turbo_dir .. "/jdinput.c",
-            libjpeg_turbo_dir .. "/jdmainct.c",
-            libjpeg_turbo_dir .. "/jdmarker.c",
-            libjpeg_turbo_dir .. "/jdmaster.c",
-            libjpeg_turbo_dir .. "/jdmerge.c",
-            libjpeg_turbo_dir .. "/jdpostct.c",
-            libjpeg_turbo_dir .. "/jdsample.c",
-            libjpeg_turbo_dir .. "/jdtrans.c",
-            libjpeg_turbo_dir .. "/jerror.c",
-            libjpeg_turbo_dir .. "/jfdctflt.c",
-            libjpeg_turbo_dir .. "/jfdctfst.c",
-            libjpeg_turbo_dir .. "/jfdctint.c",
-            libjpeg_turbo_dir .. "/jidctflt.c",
-            libjpeg_turbo_dir .. "/jidctfst.c",
-            libjpeg_turbo_dir .. "/jidctint.c",
-            libjpeg_turbo_dir .. "/jmemmgr.c",
-            libjpeg_turbo_dir .. "/jmemnobs.c",
-            libjpeg_turbo_dir .. "/jquant1.c",
-            libjpeg_turbo_dir .. "/jquant2.c",
-            libjpeg_turbo_dir .. "/jutils.c",
-            libjpeg_turbo_dir .. "/*.h"
-        }
         
         filter{}
 
