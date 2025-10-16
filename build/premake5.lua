@@ -45,92 +45,246 @@ function check_sdl3()
     os.chdir("../")
 end
 
+-- Global variable to cache versions
+local cached_versions = nil
+
+function get_latest_versions()
+    -- Return cached versions if already fetched
+    if cached_versions then
+        return cached_versions
+    end
+    
+    -- Define repositories and their fallback versions
+    local repos = {
+        box2d = {
+            repo = "erincatto/box2d",
+            fallback = "3.1.1"
+        },
+        libpng = {
+            repo = "pnggroup/libpng",
+            fallback = "1.6.44"
+        },
+        libjpeg_turbo = {
+            repo = "libjpeg-turbo/libjpeg-turbo",
+            fallback = "3.0.4"
+        },
+        pugixml = {
+            repo = "zeux/pugixml",
+            fallback = "1.14"
+        },
+        sdl3_image = {
+            repo = "libsdl-org/SDL_image",
+            fallback = "3.0.0"
+        }
+    }
+    
+    local versions = {}
+    
+    print("Fetching latest versions for all externals...")
+    
+    for name, info in pairs(repos) do
+        print("Checking latest " .. name .. " version...")
+        local result_str, response_code = http.get("https://api.github.com/repos/" .. info.repo .. "/releases/latest")
+        
+        if response_code == 200 and result_str then
+            -- Parse JSON to extract tag_name, handle both "v1.2.3" and "release-1.2.3" formats
+            local tag_match = string.match(result_str, '"tag_name"%s*:%s*"[vr]?[elase]*%-?([^"]+)"')
+            if tag_match then
+                versions[name] = tag_match
+                print("Latest " .. name .. " version found: " .. tag_match)
+            else
+                versions[name] = info.fallback
+                print("Could not parse " .. name .. " version from API response, using fallback: " .. info.fallback)
+            end
+        else
+            versions[name] = info.fallback
+            print("Could not fetch latest " .. name .. " version from GitHub API (response code: " .. tostring(response_code) .. "), using fallback: " .. info.fallback)
+        end
+        
+        -- Add a small delay between API calls to avoid rate limiting
+        if next(repos, name) then  -- Not the last iteration
+            print("Waiting briefly to avoid rate limiting...")
+            os.execute("ping 127.0.0.1 -n 2 > nul")  -- 1 second delay on Windows
+        end
+    end
+    
+    -- Cache the results
+    cached_versions = versions
+    return versions
+end
+
 function check_box2d()
     os.chdir("external")
-    if(os.isdir("box2d-2.4.2") == false) then
-        if(not os.isfile("box2d-2.4.2.zip")) then
-            print("Box2D not found, downloading from github")
-            local result_str, response_code = http.download("https://github.com/erincatto/box2d/archive/refs/tags/v2.4.2.zip", "box2d-2.4.2.zip", {
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local box2d_version = versions.box2d
+    local box2d_folder = "box2d-" .. box2d_version
+    local box2d_zip = box2d_folder .. ".zip"
+    
+    if(os.isdir("box2d") == false) then
+        if(not os.isfile(box2d_zip)) then
+            print("Box2D v" .. box2d_version .. " not found, downloading from github")
+            local download_url = "https://github.com/erincatto/box2d/archive/refs/tags/v" .. box2d_version .. ".zip"
+            local result_str, response_code = http.download(download_url, box2d_zip, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
-        print("Unzipping to " ..  os.getcwd())
-        zip.extract("box2d-2.4.2.zip", os.getcwd())
-        os.remove("box2d-2.4.2.zip")
+        print("Unzipping to " .. os.getcwd())
+        zip.extract(box2d_zip, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(box2d_folder) then
+            os.rename(box2d_folder, "box2d")
+            print("Renamed " .. box2d_folder .. " to box2d")
+        end
+        
+        os.remove(box2d_zip)
+    else
+        print("Box2D already exists")
     end
+    
     os.chdir("../")
 end
 
 function check_libpng()
     os.chdir("external")
-    if(os.isdir("libpng-1.6.44") == false) then
-        if(not os.isfile("libpng-1.6.44.tar.gz")) then
-            print("libpng not found, downloading from official source")
-            local result_str, response_code = http.download("https://github.com/pnggroup/libpng/archive/refs/tags/v1.6.44.tar.gz", "libpng-1.6.44.tar.gz", {
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local libpng_version = versions.libpng
+    local libpng_folder = "libpng-" .. libpng_version
+    local libpng_archive = libpng_folder .. ".zip"
+    
+    if(os.isdir("libpng") == false) then
+        if(not os.isfile(libpng_archive)) then
+            print("libpng v" .. libpng_version .. " not found, downloading from official source")
+            local download_url = "https://github.com/pnggroup/libpng/archive/refs/tags/v" .. libpng_version .. ".zip"
+            local result_str, response_code = http.download(download_url, libpng_archive, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
         print("Extracting libpng to " .. os.getcwd())
-        -- Since this is a .tar.gz, we'll need to extract it using a different method
-        os.execute("tar -xzf libpng-1.6.44.tar.gz")
-        if os.isdir("libpng-1.6.44") then
-            os.rename("libpng-1.6.44", "libpng")
+        zip.extract(libpng_archive, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(libpng_folder) then
+            os.rename(libpng_folder, "libpng")
+            print("Renamed " .. libpng_folder .. " to libpng")
         end
-        os.remove("libpng-1.6.44.tar.gz")
+        
+        os.remove(libpng_archive)
+    else
+        print("libpng already exists")
     end
+    
     os.chdir("../")
 end
 
 function check_libjpeg_turbo()
     os.chdir("external")
-    if(os.isdir("libjpeg-turbo-3.0.4") == false) then
-        if(not os.isfile("libjpeg-turbo-3.0.4.tar.gz")) then
-            print("libjpeg-turbo not found, downloading from github")
-            local result_str, response_code = http.download("https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/3.0.4.tar.gz", "libjpeg-turbo-3.0.4.tar.gz", {
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local libjpeg_version = versions.libjpeg_turbo
+    local libjpeg_folder = "libjpeg-turbo-" .. libjpeg_version
+    local libjpeg_archive = libjpeg_folder .. ".zip"
+    
+    if(os.isdir("libjpeg-turbo") == false) then
+        if(not os.isfile(libjpeg_archive)) then
+            print("libjpeg-turbo v" .. libjpeg_version .. " not found, downloading from github")
+            local download_url = "https://github.com/libjpeg-turbo/libjpeg-turbo/archive/refs/tags/" .. libjpeg_version .. ".zip"
+            local result_str, response_code = http.download(download_url, libjpeg_archive, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
         print("Extracting libjpeg-turbo to " .. os.getcwd())
-        os.execute("tar -xzf libjpeg-turbo-3.0.4.tar.gz")
-        os.remove("libjpeg-turbo-3.0.4.tar.gz")
+        zip.extract(libjpeg_archive, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(libjpeg_folder) then
+            os.rename(libjpeg_folder, "libjpeg-turbo")
+            print("Renamed " .. libjpeg_folder .. " to libjpeg-turbo")
+        end
+        
+        os.remove(libjpeg_archive)
+    else
+        print("libjpeg-turbo already exists")
     end
+    
     os.chdir("../")
 end
 
 function check_pugixml()
     os.chdir("external")
-    if(os.isdir("pugixml-1.14") == false) then
-        if(not os.isfile("pugixml-1.14.zip")) then
-            print("pugixml not found, downloading from github")
-            local result_str, response_code = http.download("https://github.com/zeux/pugixml/archive/refs/tags/v1.14.zip", "pugixml-1.14.zip", {
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local pugixml_version = versions.pugixml
+    local pugixml_folder = "pugixml-" .. pugixml_version
+    local pugixml_zip = pugixml_folder .. ".zip"
+    
+    if(os.isdir("pugixml") == false) then
+        if(not os.isfile(pugixml_zip)) then
+            print("pugixml v" .. pugixml_version .. " not found, downloading from github")
+            local download_url = "https://github.com/zeux/pugixml/archive/refs/tags/v" .. pugixml_version .. ".zip"
+            local result_str, response_code = http.download(download_url, pugixml_zip, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
         print("Unzipping pugixml to " .. os.getcwd())
-        zip.extract("pugixml-1.14.zip", os.getcwd())
-        os.remove("pugixml-1.14.zip")
+        zip.extract(pugixml_zip, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(pugixml_folder) then
+            os.rename(pugixml_folder, "pugixml")
+            print("Renamed " .. pugixml_folder .. " to pugixml")
+        end
+        
+        os.remove(pugixml_zip)
+    else
+        print("pugixml already exists")
     end
+    
     os.chdir("../")
 end
 
 function check_sdl3_image()
     os.chdir("external")
-    if(os.isdir("SDL_image-3.0.0") == false) then
-        if(not os.isfile("SDL_image-3.0.0.zip")) then
-            print("SDL3-image not found, downloading from github")
-            local result_str, response_code = http.download("https://github.com/libsdl-org/SDL_image/archive/refs/tags/release-3.0.0.zip", "SDL_image-3.0.0.zip", {
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local sdl3_image_version = versions.sdl3_image
+    local sdl3_image_folder = "SDL_image-release-" .. sdl3_image_version
+    local sdl3_image_zip = "SDL_image-" .. sdl3_image_version .. ".zip"
+    
+    if(os.isdir("SDL_image") == false) then
+        if(not os.isfile(sdl3_image_zip)) then
+            print("SDL3-image v" .. sdl3_image_version .. " not found, downloading from github")
+            local download_url = "https://github.com/libsdl-org/SDL_image/archive/refs/tags/release-" .. sdl3_image_version .. ".zip"
+            local result_str, response_code = http.download(download_url, sdl3_image_zip, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
         print("Unzipping SDL3-image to " .. os.getcwd())
-        zip.extract("SDL_image-3.0.0.zip", os.getcwd())
-        os.remove("SDL_image-3.0.0.zip")
+        zip.extract(sdl3_image_zip, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(sdl3_image_folder) then
+            os.rename(sdl3_image_folder, "SDL_image")
+            print("Renamed " .. sdl3_image_folder .. " to SDL_image")
+        end
+        
+        os.remove(sdl3_image_zip)
+    else
+        print("SDL3-image already exists")
     end
+    
     os.chdir("../")
 end
 
@@ -141,6 +295,9 @@ function build_externals()
     check_libjpeg_turbo()
     check_pugixml()
     check_sdl3_image()
+    if (downloadBox2D) then
+        check_box2d()
+    end
 end
 
 function platform_defines()
@@ -167,19 +324,19 @@ downloadSDL3 = true
 sdl3_dir = "external/SDL3"
 
 downloadBox2D = true
-box2d_dir = "external/box2d-2.4.2"
+box2d_dir = "external/box2d"
 
 downloadLibPNG = true
 libpng_dir = "external/libpng"
 
 downloadLibJPEGTurbo = true
-libjpeg_turbo_dir = "external/libjpeg-turbo-3.0.4"
+libjpeg_turbo_dir = "external/libjpeg-turbo"
 
 downloadPugiXML = true
-pugixml_dir = "external/pugixml-1.14"
+pugixml_dir = "external/pugixml"
 
 downloadSDL3Image = true
-sdl3_image_dir = "external/SDL_image-3.0.0"
+sdl3_image_dir = "external/SDL_image"
 
 workspaceName = 'PlatformGame'
 baseName = path.getbasename(path.getdirectory(os.getcwd()))
@@ -301,22 +458,34 @@ end
         
         location "build_files/"
         
-        language "C++"
+        language "C"
         targetdir "../bin/%{cfg.buildcfg}"
+        
+        -- Use C11 standard for static_assert support
+        cdialect "C11"
         
         filter "action:vs*"
             defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
             characterset ("Unicode")
-            buildoptions { "/Zc:__cplusplus" }
+            -- MSVC compatibility: Force C compilation
+            buildoptions { "/TC" }
+            -- For MSVC, define _Static_assert as a no-op since MSVC doesn't fully support C11
+            defines { "_Static_assert(x,y)=" }
+        
+        filter "system:not windows"
+            -- For non-Windows systems, ensure C11 support and define required macros
+            buildoptions { "-std=c11" }
+            defines { "_GNU_SOURCE", "_POSIX_C_SOURCE=200809L" }
+        
         filter{}
         
-        includedirs {box2d_dir, box2d_dir .. "/include", box2d_dir .. "/src" }
+        includedirs {box2d_dir, box2d_dir .. "/include", box2d_dir .. "/src", box2d_dir .. "/extern/simde" }
         vpaths
         {
             ["Header Files"] = { box2d_dir .. "/include/**.h", box2d_dir .. "/src/**.h"},
-            ["Source Files/*"] = { box2d_dir .. "/src/**.cpp"},
+            ["Source Files/*"] = { box2d_dir .. "/src/**.c"},
         }
-        files {box2d_dir .. "/include/**.h", box2d_dir .. "/src/**.cpp", box2d_dir .. "/src/**.h"}
+        files {box2d_dir .. "/include/**.h", box2d_dir .. "/src/**.c", box2d_dir .. "/src/**.h"}
         
         filter{}
 
