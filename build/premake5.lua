@@ -22,26 +22,36 @@ end
 
 function check_sdl3()
     os.chdir("external")
+    
+    -- Get the cached versions (will fetch only once)
+    local versions = get_latest_versions()
+    local sdl3_version = versions.sdl3
+    local sdl3_folder = "SDL3-" .. sdl3_version
+    local sdl3_zip = "SDL3-devel-" .. sdl3_version .. "-VC.zip"
+    
     if(os.isdir("SDL3") == false) then
-        if(not os.isfile("SDL3-devel-VC.zip")) then
-            print("SDL3 not found, downloading from GitHub")
-            local result_str, response_code = http.download(
-                "https://github.com/libsdl-org/SDL/releases/download/release-3.2.22/SDL3-devel-3.2.22-VC.zip", 
-                "SDL3-devel-VC.zip", 
-                {
-                    progress = download_progress,
-                    headers = { "From: Premake", "Referer: Premake" }
-                }
-            )
+        if(not os.isfile(sdl3_zip)) then
+            print("SDL3 v" .. sdl3_version .. " not found, downloading from GitHub")
+            local download_url = "https://github.com/libsdl-org/SDL/releases/download/release-" .. sdl3_version .. "/SDL3-devel-" .. sdl3_version .. "-VC.zip"
+            local result_str, response_code = http.download(download_url, sdl3_zip, {
+                progress = download_progress,
+                headers = { "From: Premake", "Referer: Premake" }
+            })
         end
-        print("Unzipping to " .. os.getcwd())
-        zip.extract("SDL3-devel-VC.zip", os.getcwd())
-        -- Rename the extracted folder to SDL3 for consistency
-        if os.isdir("SDL3-3.2.22") then
-            os.rename("SDL3-3.2.22", "SDL3")
+        print("Unzipping SDL3 to " .. os.getcwd())
+        zip.extract(sdl3_zip, os.getcwd())
+        
+        -- Rename the extracted folder to simple name
+        if os.isdir(sdl3_folder) then
+            os.rename(sdl3_folder, "SDL3")
+            print("Renamed " .. sdl3_folder .. " to SDL3")
         end
-        os.remove("SDL3-devel-VC.zip")
+        
+        os.remove(sdl3_zip)
+    else
+        print("SDL3 already exists")
     end
+    
     os.chdir("../")
 end
 
@@ -56,6 +66,10 @@ function get_latest_versions()
     
     -- Define repositories and their fallback versions
     local repos = {
+        sdl3 = {
+            repo = "libsdl-org/SDL",
+            fallback = "3.2.22"
+        },
         box2d = {
             repo = "erincatto/box2d",
             fallback = "3.1.1"
@@ -180,6 +194,12 @@ function check_libpng()
         print("libpng already exists")
     end
     
+    -- Generate pnglibconf.h from the prebuilt version
+    if os.isdir("libpng") and not os.isfile("libpng/pnglibconf.h") then
+        print("Generating pnglibconf.h for libpng")
+        os.copyfile("libpng/scripts/pnglibconf.h.prebuilt", "libpng/pnglibconf.h")
+    end
+    
     os.chdir("../")
 end
 
@@ -213,6 +233,34 @@ function check_libjpeg_turbo()
         os.remove(libjpeg_archive)
     else
         print("libjpeg-turbo already exists")
+    end
+    
+    -- Generate jconfig.h for Windows
+    if os.isdir("libjpeg-turbo") and not os.isfile("libjpeg-turbo/jconfig.h") then
+        print("Generating jconfig.h for libjpeg-turbo")
+        local jconfig_content = [[
+/* jconfig.h - Windows configuration for libjpeg-turbo */
+#define JPEG_LIB_VERSION 62
+#define LIBJPEG_TURBO_VERSION 3.0.4
+#define C_ARITH_CODING_SUPPORTED 1
+#define D_ARITH_CODING_SUPPORTED 1
+#define MEM_SRCDST_SUPPORTED 1
+#define BITS_IN_JSAMPLE 8
+#define HAVE_PROTOTYPES 1
+#define HAVE_UNSIGNED_CHAR 1
+#define HAVE_UNSIGNED_SHORT 1
+#define INLINE __inline
+#ifdef _WIN64
+#define SIZEOF_SIZE_T 8
+#else
+#define SIZEOF_SIZE_T 4
+#endif
+]]
+        local file = io.open("libjpeg-turbo/jconfig.h", "wb")
+        if file then
+            file:write(jconfig_content)
+            file:close()
+        end
     end
     
     os.chdir("../")
@@ -256,33 +304,32 @@ end
 function check_sdl3_image()
     os.chdir("external")
     
-    -- Get the cached versions (will fetch only once)
-    local versions = get_latest_versions()
-    local sdl3_image_version = versions.sdl3_image
-    local sdl3_image_folder = "SDL_image-release-" .. sdl3_image_version
-    local sdl3_image_zip = "SDL_image-" .. sdl3_image_version .. ".zip"
+    -- Use a fixed version for the prebuilt binaries
+    local sdl3_image_version = "3.2.4"
+    local sdl3_image_folder = "SDL3_image-" .. sdl3_image_version
+    local sdl3_image_zip = "SDL3_image-devel-" .. sdl3_image_version .. "-VC.zip"
     
-    if(os.isdir("SDL_image") == false) then
+    if(os.isdir("SDL3_image") == false) then
         if(not os.isfile(sdl3_image_zip)) then
-            print("SDL3-image v" .. sdl3_image_version .. " not found, downloading from github")
-            local download_url = "https://github.com/libsdl-org/SDL_image/archive/refs/tags/release-" .. sdl3_image_version .. ".zip"
+            print("SDL3_image v" .. sdl3_image_version .. " not found, downloading prebuilt binaries from GitHub")
+            local download_url = "https://github.com/libsdl-org/SDL_image/releases/download/release-" .. sdl3_image_version .. "/SDL3_image-devel-" .. sdl3_image_version .. "-VC.zip"
             local result_str, response_code = http.download(download_url, sdl3_image_zip, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
-        print("Unzipping SDL3-image to " .. os.getcwd())
+        print("Unzipping SDL3_image to " .. os.getcwd())
         zip.extract(sdl3_image_zip, os.getcwd())
         
         -- Rename the extracted folder to simple name
         if os.isdir(sdl3_image_folder) then
-            os.rename(sdl3_image_folder, "SDL_image")
-            print("Renamed " .. sdl3_image_folder .. " to SDL_image")
+            os.rename(sdl3_image_folder, "SDL3_image")
+            print("Renamed " .. sdl3_image_folder .. " to SDL3_image")
         end
         
         os.remove(sdl3_image_zip)
     else
-        print("SDL3-image already exists")
+        print("SDL3_image already exists")
     end
     
     os.chdir("../")
@@ -336,7 +383,7 @@ downloadPugiXML = true
 pugixml_dir = "external/pugixml"
 
 downloadSDL3Image = true
-sdl3_image_dir = "external/SDL_image"
+sdl3_image_dir = "external/SDL3_image"
 
 workspaceName = 'PlatformGame'
 baseName = path.getbasename(path.getdirectory(os.getcwd()))
@@ -424,8 +471,8 @@ end
         filter "action:vs*"
             defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
             links {"SDL3.lib"}
-            dependson {"box2d", "libpng", "libjpeg-turbo", "pugixml", "sdl3-image"}
-            links {"box2d.lib", "libpng.lib", "jpeg.lib", "pugixml.lib", "SDL3_image.lib"}
+            dependson {"box2d", "libpng", "libjpeg-turbo", "pugixml"}
+            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib"}
             characterset ("Unicode")
 
         filter "system:windows"
@@ -434,18 +481,20 @@ end
             
             -- SDL3 x64 específic
             filter { "system:windows", "platforms:x64" }
-                libdirs { sdl3_dir .. "/lib/x64" }
+                libdirs { sdl3_dir .. "/lib/x64", sdl3_image_dir .. "/lib/x64" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x64/
-                    "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x64\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x64\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x64\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
                 }
                 
             -- SDL3 x86 específic
             filter { "system:windows", "platforms:x86" }
-                libdirs { sdl3_dir .. "/lib/x86" }
+                libdirs { sdl3_dir .. "/lib/x86", sdl3_image_dir .. "/lib/x86" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x86/
-                    "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x86\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x86\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
+                    "{COPY} \"$(SolutionDir)build\\external\\SDL3_image\\lib\\x86\\SDL3_image.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\""
                 }
 
         filter "system:linux"
@@ -614,32 +663,5 @@ end
             pugixml_dir .. "/src/pugixml.hpp",
             pugixml_dir .. "/src/pugiconfig.hpp"
         }
-        
-        filter{}
-
-    project "sdl3-image"
-        kind "StaticLib"
-        
-        location "build_files/"
-        
-        language "C"
-        targetdir "../bin/%{cfg.buildcfg}"
-        
-        filter "action:vs*"
-            defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
-            characterset ("Unicode")
-        filter{}
-        
-        includedirs { sdl3_image_dir .. "/include", sdl3_dir .. "/include", libpng_dir, libjpeg_turbo_dir }
-        defines { "LOAD_PNG", "LOAD_JPG" }
-        
-        files { 
-            sdl3_image_dir .. "/src/IMG.c",
-            sdl3_image_dir .. "/src/IMG_png.c",
-            sdl3_image_dir .. "/src/IMG_jpg.c",
-            sdl3_image_dir .. "/include/**.h"
-        }
-        
-        dependson { "libpng", "libjpeg-turbo" }
         
         filter{}
