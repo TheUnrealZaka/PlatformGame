@@ -407,8 +407,9 @@ FodyWeavers.xsd
 *.sln.iml
 build_files
 SDL3
+box2d
 libpng
-libjpeg
+libjpeg-turbo
 pugixml
 Makefile
 /*.sln
