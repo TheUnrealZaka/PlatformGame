@@ -100,12 +100,21 @@ function get_latest_versions()
         print("Checking latest " .. name .. " version...")
         local result_str, response_code = http.get("https://api.github.com/repos/" .. info.repo .. "/releases/latest")
         
-        if response_code == 200 and result_str then
-            -- Parse JSON to extract tag_name, handle various formats like "v1.2.3", "release-1.2.3", "1.2.3"
+        -- Check for successful response (200 or "OK")
+        if (response_code == 200 or response_code == "OK") and result_str then
+            -- Parse JSON to extract tag_name
             local tag_match = string.match(result_str, '"tag_name"%s*:%s*"([^"]+)"')
             if tag_match then
                 -- Extract version number from tag, handling prefixes like "v", "release-", etc.
-                local version = string.match(tag_match, "^v?%-?release%-?(.+)$") or string.match(tag_match, "^v(.+)$") or tag_match
+                -- Try multiple patterns in order
+                local version = string.match(tag_match, "^release%-(.+)$")  -- "release-X.Y.Z"
+                if not version then
+                    version = string.match(tag_match, "^v(.+)$")  -- "vX.Y.Z"
+                end
+                if not version then
+                    version = tag_match  -- "X.Y.Z" (no prefix)
+                end
+                
                 versions[name] = version
                 print("Latest " .. name .. " version found: " .. version .. " (from tag: " .. tag_match .. ")")
             else
@@ -122,8 +131,7 @@ function get_latest_versions()
             print("Waiting briefly to avoid rate limiting...")
             os.execute("ping 127.0.0.1 -n 2 > nul")  -- 1 second delay on Windows
         end
-    end
-    
+    end    
     -- Cache the results
     cached_versions = versions
     return versions
@@ -170,6 +178,7 @@ function check_libjpeg_turbo()
     -- Use fixed version for prebuilt binaries
     local libjpeg_version = "3.1.2"
     local libjpeg_exe = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64.exe"
+    local temp_extract_folder = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64"
     
     if(os.isdir("libjpeg-turbo") == false) then
         if(not os.isfile(libjpeg_exe)) then
@@ -181,29 +190,42 @@ function check_libjpeg_turbo()
             })
         end
         
-        print("Running libjpeg-turbo installer...")
-        -- Run the installer in silent mode to extract to our directory
-        local install_path = os.getcwd() .. "\\libjpeg-turbo"
-        local install_cmd = "\"" .. libjpeg_exe .. "\" /S /D=" .. install_path
-        local result = os.execute(install_cmd)
+        print("Extracting libjpeg-turbo installer with 7zip...")
+        -- Try to extract with 7zip (if available)
+        local extract_cmd = '7z x "' .. libjpeg_exe .. '" -o"' .. temp_extract_folder .. '" -y'
+        local result = os.execute(extract_cmd)
         
-        if result == 0 or os.isdir("libjpeg-turbo") then
-            -- Wait a moment for the installer to finish
+        -- Wait a moment for extraction to complete
+        os.execute("ping 127.0.0.1 -n 2 > nul")
+        
+        -- Check if the folder with version number exists
+        if os.isdir(temp_extract_folder) then
+            -- Successfully extracted with 7zip, now rename
+            os.rename(temp_extract_folder, "libjpeg-turbo")
+            print("Renamed " .. temp_extract_folder .. " to libjpeg-turbo")
+        elseif result ~= 0 then
+            print("7zip not found or extraction failed. Trying with PowerShell installer...")
+            -- Fallback: Try PowerShell with the .exe as if it were a zip (sometimes works with NSIS)
+            local ps_cmd = 'powershell -Command "Start-Process -FilePath \\"' .. libjpeg_exe .. '\\" -ArgumentList \\"/S\\", \\"/D=' .. path.getabsolute("libjpeg-turbo") .. '\\" -Wait"'
+            os.execute(ps_cmd)
+            
+            -- Wait for installation
             os.execute("ping 127.0.0.1 -n 3 > nul")
             
-            if os.isdir("libjpeg-turbo") then
-                print("libjpeg-turbo installed successfully")
-                -- Clean up the installer
-                os.remove(libjpeg_exe)
-            else
-                print("WARNING: libjpeg-turbo installer ran but directory not found.")
-                print("The installer file is kept at: " .. libjpeg_exe)
-                print("Please run it manually or check the installation.")
+            if not os.isdir("libjpeg-turbo") then
+                print("ERROR: Could not extract libjpeg-turbo automatically.")
+                print("Please manually extract " .. libjpeg_exe .. " to create a 'libjpeg-turbo' folder")
+                print("You can use 7-Zip or install the .exe and copy files to:")
+                print(path.getabsolute("libjpeg-turbo"))
+                os.chdir("../")
+                return
             end
-        else
-            print("WARNING: Could not run libjpeg-turbo installer automatically.")
-            print("Please manually run: " .. libjpeg_exe)
-            print("And install to: " .. install_path)
+        end
+        
+        if os.isdir("libjpeg-turbo") then
+            print("libjpeg-turbo extracted successfully")
+            -- Clean up the installer
+            os.remove(libjpeg_exe)
         end
     else
         print("libjpeg-turbo already exists")
@@ -390,7 +412,37 @@ function check_libpng()
 end
 
 function build_externals()
-    print("calling externals")
+    print("Checking external dependencies...")
+    
+    -- Check if all required dependencies already exist
+    local all_exist = true
+    if downloadSDL3 and not os.isdir("external/SDL3") then
+        all_exist = false
+    end
+    if downloadLibJPEGTurbo and not os.isdir("external/libjpeg-turbo") then
+        all_exist = false
+    end
+    if downloadPugiXML and not os.isdir("external/pugixml") then
+        all_exist = false
+    end
+    if downloadSDL3Image and not os.isdir("external/SDL3_image") then
+        all_exist = false
+    end
+    if downloadLibPNG and not os.isdir("external/libpng") then
+        all_exist = false
+    end
+    if downloadBox2D and not os.isdir("external/box2d") then
+        all_exist = false
+    end
+    
+    -- If all dependencies exist, skip version fetching entirely
+    if all_exist then
+        print("All external dependencies already installed, skipping checks.")
+        return
+    end
+    
+    print("Some dependencies missing, fetching latest versions...")
+    
     check_sdl3()
     check_libjpeg_turbo()
     check_pugixml()
@@ -526,9 +578,8 @@ end
 
         filter "action:vs*"
             defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
-            links {"SDL3.lib"}
             dependson {"box2d", "pugixml"}
-            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib", "jpeg.lib", "libpng.lib"}
+            links {"box2d", "pugixml", "SDL3", "SDL3_image", "jpeg", "libpng"}
             characterset ("Unicode")
 
         filter "system:windows"
