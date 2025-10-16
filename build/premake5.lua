@@ -101,11 +101,13 @@ function get_latest_versions()
         local result_str, response_code = http.get("https://api.github.com/repos/" .. info.repo .. "/releases/latest")
         
         if response_code == 200 and result_str then
-            -- Parse JSON to extract tag_name, handle both "v1.2.3" and "release-1.2.3" formats
-            local tag_match = string.match(result_str, '"tag_name"%s*:%s*"[vr]?[elase]*%-?([^"]+)"')
+            -- Parse JSON to extract tag_name, handle various formats like "v1.2.3", "release-1.2.3", "1.2.3"
+            local tag_match = string.match(result_str, '"tag_name"%s*:%s*"([^"]+)"')
             if tag_match then
-                versions[name] = tag_match
-                print("Latest " .. name .. " version found: " .. tag_match)
+                -- Extract version number from tag, handling prefixes like "v", "release-", etc.
+                local version = string.match(tag_match, "^v?%-?release%-?(.+)$") or string.match(tag_match, "^v(.+)$") or tag_match
+                versions[name] = version
+                print("Latest " .. name .. " version found: " .. version .. " (from tag: " .. tag_match .. ")")
             else
                 versions[name] = info.fallback
                 print("Could not parse " .. name .. " version from API response, using fallback: " .. info.fallback)
@@ -179,43 +181,29 @@ function check_libjpeg_turbo()
             })
         end
         
-        print("Extracting libjpeg-turbo using 7zip...")
-        -- Create temp directory for extraction
-        os.mkdir("libjpeg-turbo-temp")
+        print("Running libjpeg-turbo installer...")
+        -- Run the installer in silent mode to extract to our directory
+        local install_path = os.getcwd() .. "\\libjpeg-turbo"
+        local install_cmd = "\"" .. libjpeg_exe .. "\" /S /D=" .. install_path
+        local result = os.execute(install_cmd)
         
-        -- Extract the .exe using 7zip (NSIS installer)
-        local extract_cmd = "7z x \"" .. libjpeg_exe .. "\" -o\"libjpeg-turbo-temp\" -y"
-        local result = os.execute(extract_cmd)
-        
-        if result == 0 then
-            -- Create final directory structure
-            os.mkdir("libjpeg-turbo")
-            os.mkdir("libjpeg-turbo/include")
-            os.mkdir("libjpeg-turbo/lib")
-            os.mkdir("libjpeg-turbo/bin")
+        if result == 0 or os.isdir("libjpeg-turbo") then
+            -- Wait a moment for the installer to finish
+            os.execute("ping 127.0.0.1 -n 3 > nul")
             
-            -- Copy include files
-            if os.isdir("libjpeg-turbo-temp/include") then
-                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\include libjpeg-turbo\\include")
+            if os.isdir("libjpeg-turbo") then
+                print("libjpeg-turbo installed successfully")
+                -- Clean up the installer
+                os.remove(libjpeg_exe)
+            else
+                print("WARNING: libjpeg-turbo installer ran but directory not found.")
+                print("The installer file is kept at: " .. libjpeg_exe)
+                print("Please run it manually or check the installation.")
             end
-            
-            -- Copy lib files
-            if os.isdir("libjpeg-turbo-temp/lib") then
-                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\lib libjpeg-turbo\\lib")
-            end
-            
-            -- Copy bin files (DLLs)
-            if os.isdir("libjpeg-turbo-temp/bin") then
-                os.execute("xcopy /E /I /Y libjpeg-turbo-temp\\bin libjpeg-turbo\\bin")
-            end
-            
-            -- Clean up temp directory
-            os.execute("rmdir /S /Q libjpeg-turbo-temp")
-            os.remove(libjpeg_exe)
-            
-            print("libjpeg-turbo extracted successfully")
         else
-            print("ERROR: Failed to extract libjpeg-turbo. Make sure 7zip is installed and in PATH.")
+            print("WARNING: Could not run libjpeg-turbo installer automatically.")
+            print("Please manually run: " .. libjpeg_exe)
+            print("And install to: " .. install_path)
         end
     else
         print("libjpeg-turbo already exists")
@@ -293,12 +281,123 @@ function check_sdl3_image()
     os.chdir("../")
 end
 
+function check_libpng()
+    os.chdir("external")
+    
+    -- Use fixed version for prebuilt binaries from SourceForge
+    local libpng_version = "1.2.37"
+    local libpng_zip = "libpng-" .. libpng_version .. "-lib.zip"
+    
+    if(os.isdir("libpng") == false) then
+        if(not os.isfile(libpng_zip)) then
+            print("libpng v" .. libpng_version .. " not found, downloading from SourceForge")
+            -- Use curl.exe (Windows 10+ native) with the direct mirror link
+            local download_url = "https://master.dl.sourceforge.net/project/gnuwin32/libpng/" .. libpng_version .. "/libpng-" .. libpng_version .. "-lib.zip?viasf=1"
+            local curl_command = 'curl.exe -L -o "' .. libpng_zip .. '" "' .. download_url .. '"'
+            print("Downloading using curl...")
+            os.execute(curl_command)
+            
+            -- Check if file was downloaded successfully
+            if not os.isfile(libpng_zip) then
+                print("ERROR: Failed to download libpng")
+                print("You may need to manually download from:")
+                print(download_url)
+                print("And place it in: " .. os.getcwd())
+                os.chdir("../")
+                return
+            end
+            
+            print("Download completed successfully")
+        end
+        
+        -- Check if the zip file actually exists and has content
+        if os.isfile(libpng_zip) then
+            print("Unzipping libpng to " .. os.getcwd())
+            
+            -- Extract directly (most zip files extract to a subfolder)
+            local extract_success, extract_err = pcall(function()
+                zip.extract(libpng_zip, os.getcwd())
+            end)
+            
+            if not extract_success then
+                print("ERROR: Failed to extract zip file: " .. tostring(extract_err))
+                print("The zip file might be corrupted. Trying to extract with PowerShell...")
+                local ps_extract = 'powershell -Command "Expand-Archive -Path \'' .. libpng_zip .. '\' -DestinationPath \'.\' -Force"'
+                local extract_result = os.execute(ps_extract)
+                if extract_result ~= 0 then
+                    print("ERROR: PowerShell extraction also failed")
+                    print("File is located at: " .. os.getcwd() .. "\\" .. libpng_zip)
+                    os.chdir("../")
+                    return
+                end
+            end
+            
+            -- Check different possible extraction patterns
+            local possible_folders = {
+                "libpng-" .. libpng_version .. "-lib",
+                "libpng-" .. libpng_version,
+                "libpng"
+            }
+            
+            local found = false
+            for _, folder in ipairs(possible_folders) do
+                if os.isdir(folder) then
+                    if folder ~= "libpng" then
+                        os.rename(folder, "libpng")
+                        print("Renamed " .. folder .. " to libpng")
+                    else
+                        print("libpng folder found")
+                    end
+                    found = true
+                    break
+                end
+            end
+            
+            -- Check if files were extracted directly (no subfolder)
+            if not found and os.isdir("include") and os.isdir("lib") then
+                print("libpng extracted directly without subfolder, creating libpng directory...")
+                os.mkdir("libpng")
+                -- Move extracted folders into libpng
+                if os.isdir("include") then
+                    os.rename("include", "libpng/include")
+                end
+                if os.isdir("lib") then
+                    os.rename("lib", "libpng/lib")
+                end
+                if os.isdir("manifest") then
+                    os.rename("manifest", "libpng/manifest")
+                end
+                found = true
+                print("libpng directory structure created")
+            end
+            
+            if found then
+                os.remove(libpng_zip)
+                print("libpng installed successfully")
+            else
+                print("ERROR: Could not find expected libpng folder after extraction")
+                print("Please check the external directory and manually rename the folder to 'libpng'")
+                print("Keeping zip file for inspection: " .. libpng_zip)
+            end
+        else
+            print("ERROR: libpng zip file was not downloaded properly")
+        end
+    else
+        print("libpng already exists")
+    end
+    
+    os.chdir("../")
+end
+
 function build_externals()
     print("calling externals")
     check_sdl3()
     check_libjpeg_turbo()
     check_pugixml()
     check_sdl3_image()
+    if (downloadLibPNG) then
+        check_libpng()
+    end
     if (downloadBox2D) then
         check_box2d()
     end
@@ -339,6 +438,9 @@ pugixml_dir = "external/pugixml"
 downloadSDL3Image = true
 sdl3_image_dir = "external/SDL3_image"
 
+downloadLibPNG = true
+libpng_dir = "external/libpng"
+
 workspaceName = 'PlatformGame'
 baseName = path.getbasename(path.getdirectory(os.getcwd()))
 
@@ -378,7 +480,7 @@ workspace (workspaceName)
 
     targetdir "bin/%{cfg.buildcfg}/"
 
-if (downloadSDL3 or downloadBox2D or downloadLibJPEGTurbo or downloadPugiXML or downloadSDL3Image) then
+if (downloadSDL3 or downloadBox2D or downloadLibJPEGTurbo or downloadPugiXML or downloadSDL3Image or downloadLibPNG) then
     build_externals()
 end
 
@@ -416,6 +518,7 @@ end
         includedirs { libjpeg_turbo_dir .. "/include" }
         includedirs { pugixml_dir .. "/src" }
         includedirs { sdl3_image_dir .. "/include" }
+        includedirs { libpng_dir .. "/include" }
 
         cdialect "C17"
         cppdialect "C++17"
@@ -425,7 +528,7 @@ end
             defines{"_WINSOCK_DEPRECATED_NO_WARNINGS", "_CRT_SECURE_NO_WARNINGS"}
             links {"SDL3.lib"}
             dependson {"box2d", "pugixml"}
-            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib", "jpeg.lib"}
+            links {"box2d.lib", "SDL3_image.lib", "pugixml.lib", "jpeg.lib", "libpng.lib"}
             characterset ("Unicode")
 
         filter "system:windows"
@@ -434,7 +537,7 @@ end
             
             -- SDL3 x64 específic
             filter { "system:windows", "platforms:x64" }
-                libdirs { sdl3_dir .. "/lib/x64", sdl3_image_dir .. "/lib/x64", libjpeg_turbo_dir .. "/lib" }
+                libdirs { "../bin/%{cfg.buildcfg}", sdl3_dir .. "/lib/x64", sdl3_image_dir .. "/lib/x64", libjpeg_turbo_dir .. "/lib", libpng_dir .. "/lib" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x64/
                     "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x64\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
@@ -444,7 +547,7 @@ end
                 
             -- SDL3 x86 específic
             filter { "system:windows", "platforms:x86" }
-                libdirs { sdl3_dir .. "/lib/x86", sdl3_image_dir .. "/lib/x86", libjpeg_turbo_dir .. "/lib" }
+                libdirs { "../bin/%{cfg.buildcfg}", sdl3_dir .. "/lib/x86", sdl3_image_dir .. "/lib/x86", libjpeg_turbo_dir .. "/lib", libpng_dir .. "/lib" }
                 postbuildcommands {
                     -- Path correcte: des de build/build_files/ cap a build/external/SDL3/lib/x86/
                     "{COPY} \"$(SolutionDir)build\\external\\SDL3\\lib\\x86\\SDL3.dll\" \"$(SolutionDir)bin\\%{cfg.buildcfg}\\\"",
