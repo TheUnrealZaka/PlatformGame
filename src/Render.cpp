@@ -30,6 +30,8 @@ bool Render::Awake()
 	int scale = Engine::GetInstance().window->GetScale();
 	SDL_Window* window = Engine::GetInstance().window->window;
 
+	//L05 TODO 5 - Load the configuration of the Render module
+	
 	// SDL3: no flags; create default renderer and set vsync separately
 	renderer = SDL_CreateRenderer(window, nullptr);
 
@@ -40,7 +42,7 @@ bool Render::Awake()
 	}
 	else
 	{
-		if (vsync)
+		if (configParameters.child("vsync").attribute("value").as_bool())
 		{
 			if (!SDL_SetRenderVSync(renderer, 1))
 			{

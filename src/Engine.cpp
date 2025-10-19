@@ -9,6 +9,9 @@
 #include "Textures.h"
 #include "Audio.h"
 #include "Scene.h"
+#include "EntityManager.h"
+#include "Map.h"
+#include "Physics.h"
 #include "Log.h"
 
 // Constructor
@@ -23,13 +26,19 @@ Engine::Engine() {
     lastSecFrameTime = PerfTimer();
     frames = 0;
 
+    // L4: TODO 1: Add the EntityManager Module to the Engine
+    
     // Modules
     window = std::make_shared<Window>();
     input = std::make_shared<Input>();
     render = std::make_shared<Render>();
     textures = std::make_shared<Textures>();
     audio = std::make_shared<Audio>();
+    // L08: TODO 2: Add Physics module
+    physics = std::make_shared<Physics>();
     scene = std::make_shared<Scene>();
+    map = std::make_shared<Map>();
+    entityManager = std::make_shared<EntityManager>();
 
     // Ordered for awake / Start / Update
     // Reverse order of CleanUp
@@ -37,7 +46,11 @@ Engine::Engine() {
     AddModule(std::static_pointer_cast<Module>(input));
     AddModule(std::static_pointer_cast<Module>(textures));
     AddModule(std::static_pointer_cast<Module>(audio));
+    // L08: TODO 2: Add Physics module
+    AddModule(std::static_pointer_cast<Module>(physics));
+    AddModule(std::static_pointer_cast<Module>(map));
     AddModule(std::static_pointer_cast<Module>(scene));
+    AddModule(std::static_pointer_cast<Module>(entityManager));
 
     // Render last 
     AddModule(std::static_pointer_cast<Module>(render));
@@ -65,10 +78,19 @@ bool Engine::Awake() {
 
     LOG("Engine::Awake");
 
+    //L05 TODO 2: Add the LoadConfig() method here
+    LoadConfig();
+    // L05: TODO 3: Read the title from the config file and set the variable gameTitle, read targetFrameRate and set the variables
+    gameTitle = configFile.child("config").child("engine").child("title").child_value();
+    targetFrameRate = configFile.child("config").child("engine").child("targetFrameRate").attribute("value").as_int();
+
     //Iterates the module list and calls Awake on each module
     bool result = true;
     for (const auto& module : moduleList) {
+        // L05: TODO 4: Call the LoadParameters function for each module
+		module->LoadParameters(configFile.child("config").child(module.get()->name.c_str()));
         result =  module->Awake();
+
         if (!result) {
 			break;
 		}
@@ -250,6 +272,29 @@ bool Engine::PostUpdate()
     }
 
     return result;
+}
+
+// Load config from XML file
+bool Engine::LoadConfig()
+{
+    bool ret = true;
+
+    // L05: TODO 2: Load config.xml file using load_file() method from the xml_document class
+    // If the result is ok get the main node of the XML
+    // else, log the error
+    // check https://pugixml.org/docs/quickstart.html#loading
+
+    pugi::xml_parse_result result = configFile.load_file("config.xml");
+    if (result)
+    {
+        LOG("config.xml parsed without errors");
+    }
+    else
+    {
+        LOG("Error loading config.xml: %s", result.description());
+    }
+
+    return ret;
 }
 
 

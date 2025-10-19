@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Module.h"
+#include "Player.h"
 
 struct SDL_Texture;
 
@@ -32,5 +33,7 @@ public:
 	bool CleanUp();
 
 private:
-	SDL_Texture* img;
+
+	//L03: TODO 3b: Declare a Player attribute
+	std::shared_ptr<Player> player;
 };

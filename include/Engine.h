@@ -5,7 +5,7 @@
 #include "Module.h"
 #include "Timer.h"
 #include "PerfTimer.h"
-
+#include "pugixml.hpp"
 
 // Modules
 class Window;
@@ -14,6 +14,10 @@ class Render;
 class Textures;
 class Audio;
 class Scene;
+class EntityManager;
+class Map;
+//L08 TODO 2: Add Physics module
+class Physics;
 
 class Engine
 {
@@ -36,6 +40,10 @@ public:
 
 	// Called before quitting
 	bool CleanUp();
+
+	float GetDt() const {
+		return dt;
+	}
 
 private:
 
@@ -62,6 +70,9 @@ private:
 	// Call modules after each loop iteration
 	bool PostUpdate();
 
+	// Load config file
+	bool LoadConfig();
+
 	std::list<std::shared_ptr<Module>> moduleList;
 
 public:
@@ -84,6 +95,12 @@ public:
 	std::shared_ptr<Textures> textures;
 	std::shared_ptr<Audio> audio;
 	std::shared_ptr<Scene> scene;
+	// L04: TODO 1: Add the EntityManager Module to the Engine
+	std::shared_ptr<EntityManager> entityManager;
+	std::shared_ptr<Map> map;
+	// L08: TODO 2: Add Physics module
+	std::shared_ptr<Physics> physics;
+
 
 private: 
 
@@ -109,4 +126,8 @@ private:
 	int targetFrameRate = 60;
 
 	std::string gameTitle = "Platformer Game";
+
+	//L05 TODO 2: Declare a xml_document to load the config file
+	pugi::xml_document configFile;
+
 };
