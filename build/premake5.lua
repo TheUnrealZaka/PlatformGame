@@ -177,56 +177,28 @@ function check_libjpeg_turbo()
     
     -- Use fixed version for prebuilt binaries
     local libjpeg_version = "3.1.2"
-    local libjpeg_exe = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64.exe"
-    local temp_extract_folder = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64"
+    local libjpeg_folder = "libjpeg-turbo-" .. libjpeg_version .. "-vc-x64"
+    local libjpeg_zip = libjpeg_folder .. ".zip"
     
     if(os.isdir("libjpeg-turbo") == false) then
-        if(not os.isfile(libjpeg_exe)) then
-            print("libjpeg-turbo v" .. libjpeg_version .. " not found, downloading prebuilt binaries from GitHub")
-            local download_url = "https://github.com/libjpeg-turbo/libjpeg-turbo/releases/download/" .. libjpeg_version .. "/libjpeg-turbo-" .. libjpeg_version .. "-vc-x64.exe"
-            local result_str, response_code = http.download(download_url, libjpeg_exe, {
+        if(not os.isfile(libjpeg_zip)) then
+            print("libjpeg-turbo v" .. libjpeg_version .. " not found, downloading from GitHub")
+            local download_url = "https://github.com/TheUnrealZaka/libjpeg-turbo/releases/download/" .. libjpeg_version .. "/" .. libjpeg_zip
+            local result_str, response_code = http.download(download_url, libjpeg_zip, {
                 progress = download_progress,
                 headers = { "From: Premake", "Referer: Premake" }
             })
         end
+        print("Unzipping libjpeg-turbo to " .. os.getcwd())
+        zip.extract(libjpeg_zip, os.getcwd())
         
-        print("Extracting libjpeg-turbo installer with 7zip...")
-        -- Try to extract with 7zip (if available)
-        local extract_cmd = '7z x "' .. libjpeg_exe .. '" -o"' .. temp_extract_folder .. '" -y'
-        local result = os.execute(extract_cmd)
-        
-        -- Wait a moment for extraction to complete
-        os.execute("ping 127.0.0.1 -n 2 > nul")
-        
-        -- Check if the folder with version number exists
-        if os.isdir(temp_extract_folder) then
-            -- Successfully extracted with 7zip, now rename
-            os.rename(temp_extract_folder, "libjpeg-turbo")
-            print("Renamed " .. temp_extract_folder .. " to libjpeg-turbo")
-        elseif result ~= 0 then
-            print("7zip not found or extraction failed. Trying with PowerShell installer...")
-            -- Fallback: Try PowerShell with the .exe as if it were a zip (sometimes works with NSIS)
-            local ps_cmd = 'powershell -Command "Start-Process -FilePath \\"' .. libjpeg_exe .. '\\" -ArgumentList \\"/S\\", \\"/D=' .. path.getabsolute("libjpeg-turbo") .. '\\" -Wait"'
-            os.execute(ps_cmd)
-            
-            -- Wait for installation
-            os.execute("ping 127.0.0.1 -n 3 > nul")
-            
-            if not os.isdir("libjpeg-turbo") then
-                print("ERROR: Could not extract libjpeg-turbo automatically.")
-                print("Please manually extract " .. libjpeg_exe .. " to create a 'libjpeg-turbo' folder")
-                print("You can use 7-Zip or install the .exe and copy files to:")
-                print(path.getabsolute("libjpeg-turbo"))
-                os.chdir("../")
-                return
-            end
+        -- Rename the extracted folder to simple name
+        if os.isdir(libjpeg_folder) then
+            os.rename(libjpeg_folder, "libjpeg-turbo")
+            print("Renamed " .. libjpeg_folder .. " to libjpeg-turbo")
         end
         
-        if os.isdir("libjpeg-turbo") then
-            print("libjpeg-turbo extracted successfully")
-            -- Clean up the installer
-            os.remove(libjpeg_exe)
-        end
+        os.remove(libjpeg_zip)
     else
         print("libjpeg-turbo already exists")
     end
